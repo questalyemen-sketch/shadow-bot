@@ -40,6 +40,7 @@ from responses import (
 
 from knowledge import get_knowledge
 
+# نظام الصبر
 from patience import (
     init_patience,
     handle_unknown,
@@ -97,7 +98,7 @@ admin_states = {}
 
 def is_admin(user_id):
     """
-    التحقق من أن المستخدم هو المدير.
+    التحقق من المدير.
     """
 
     try:
@@ -124,8 +125,8 @@ def safe_text(text):
 
 def seed_knowledge():
     """
-    تحميل المعرفة الموجودة في knowledge.py
-    إلى SQLite بدون تكرار.
+    تحميل المعرفة من knowledge.py
+    إلى قاعدة البيانات بدون تكرار.
     """
 
     try:
@@ -139,9 +140,7 @@ def seed_knowledge():
 
         added = 0
 
-        knowledge_items = get_knowledge()
-
-        for item in knowledge_items:
+        for item in get_knowledge():
 
             if not isinstance(item, dict):
                 continue
@@ -337,6 +336,7 @@ def start_command(message):
             message.from_user
         )
 
+        # بداية محادثة جديدة = تصفير الصبر
         reset_patience(
             user_id
         )
@@ -378,13 +378,15 @@ def start_command(message):
             e
         )
 
-        bot.send_message(
+        try:
 
-            message.chat.id,
+            bot.send_message(
+                message.chat.id,
+                get_error_response()
+            )
 
-            get_error_response()
-
-        )
+        except Exception:
+            pass
 
 
 # =========================================================
@@ -461,11 +463,8 @@ def admin_command(message):
         if not is_admin(user_id):
 
             bot.send_message(
-
                 message.chat.id,
-
                 "🚫 هذه المنطقة ليست لك."
-
             )
 
             return
@@ -514,11 +513,8 @@ def stats_command(message):
         ):
 
             bot.send_message(
-
                 message.chat.id,
-
                 "🚫 هذا الأمر للمدير فقط."
-
             )
 
             return
@@ -581,11 +577,8 @@ def unknown_command(message):
         ):
 
             bot.send_message(
-
                 message.chat.id,
-
                 "🚫 هذا الأمر للمدير فقط."
-
             )
 
             return
@@ -611,11 +604,8 @@ def send_unknown_questions(chat_id):
     if not rows:
 
         bot.send_message(
-
             chat_id,
-
             "✅ لا توجد أسئلة مجهولة حتى الآن."
-
         )
 
         return
@@ -665,19 +655,14 @@ def add_command(message):
         if not is_admin(user_id):
 
             bot.send_message(
-
                 message.chat.id,
-
                 "🚫 التعليم متاح لصاحب Shadow فقط."
-
             )
 
             return
 
         admin_states[user_id] = {
-
             "state": "question"
-
         }
 
         bot.send_message(
@@ -697,7 +682,6 @@ def add_command(message):
                 "</code>\n\n"
 
                 "للإلغاء:\n"
-
                 "<code>/cancel</code>"
             )
 
@@ -729,11 +713,8 @@ def cancel_command(message):
     )
 
     bot.send_message(
-
         message.chat.id,
-
         "❌ تم إلغاء عملية التعليم."
-
     )
 
 
@@ -763,9 +744,9 @@ def handle_admin_state(message):
     if not text:
         return True
 
-    # =====================================================
+    # -----------------------------------------------------
     # Question
-    # =====================================================
+    # -----------------------------------------------------
 
     if state == "question":
 
@@ -788,9 +769,9 @@ def handle_admin_state(message):
 
         return True
 
-    # =====================================================
+    # -----------------------------------------------------
     # Answer
-    # =====================================================
+    # -----------------------------------------------------
 
     if state == "answer":
 
@@ -925,11 +906,8 @@ def callback_handler(call):
             )
 
             bot.send_message(
-
                 call.message.chat.id,
-
                 answer
-
             )
 
             return
@@ -957,11 +935,8 @@ def callback_handler(call):
             )
 
             bot.send_message(
-
                 call.message.chat.id,
-
                 answer
-
             )
 
             return
@@ -989,11 +964,8 @@ def callback_handler(call):
             )
 
             bot.send_message(
-
                 call.message.chat.id,
-
                 answer
-
             )
 
             return
@@ -1020,11 +992,8 @@ def callback_handler(call):
             )
 
             bot.send_message(
-
                 call.message.chat.id,
-
                 answer
-
             )
 
             return
@@ -1088,11 +1057,8 @@ def callback_handler(call):
             if not is_admin(user_id):
 
                 bot.send_message(
-
                     call.message.chat.id,
-
                     "🚫 ممنوع."
-
                 )
 
                 return
@@ -1122,9 +1088,7 @@ def callback_handler(call):
                 return
 
             admin_states[user_id] = {
-
                 "state": "question"
-
             }
 
             bot.send_message(
@@ -1245,11 +1209,8 @@ def text_handler(message):
                 )
 
                 bot.send_message(
-
                     message.chat.id,
-
                     "❌ تم الإلغاء."
-
                 )
 
             return
@@ -1270,7 +1231,7 @@ def text_handler(message):
                     return
 
         # =================================================
-        # Knowledge Search
+        # Search Knowledge
         # =================================================
 
         answer = search_answer(
@@ -1279,17 +1240,14 @@ def text_handler(message):
 
         if answer:
 
-            # سؤال معروف = استعادة صبر Shadow
+            # سؤال معروف = إعادة ضبط الصبر
             reset_patience(
                 user_id
             )
 
             bot.send_message(
-
                 message.chat.id,
-
                 answer
-
             )
 
             return
@@ -1299,11 +1257,8 @@ def text_handler(message):
         # =================================================
 
         record_unknown_question(
-
             user_id,
-
             text
-
         )
 
         # =================================================
@@ -1314,7 +1269,10 @@ def text_handler(message):
             user_id
         )
 
-        # إضافة معلومات بسيطة حسب المستوى
+        # -------------------------------------------------
+        # رسائل إضافية حسب مستوى الصبر
+        # -------------------------------------------------
+
         if count == 5:
 
             reply += (
@@ -1327,11 +1285,11 @@ def text_handler(message):
 
             reply += (
                 "\n\n😈 <i>"
-                "تحذير أخير تقريبًا..."
+                "تحذير: أنت تقترب من نهاية صبري."
                 "</i>"
             )
 
-        elif count >= 15:
+        elif count == 15:
 
             reply += (
                 "\n\n☠️ <i>"
@@ -1351,21 +1309,15 @@ def text_handler(message):
     except Exception as e:
 
         logger.exception(
-
             "Message error: %s",
-
             e
-
         )
 
         try:
 
             bot.send_message(
-
                 message.chat.id,
-
                 get_error_response()
-
             )
 
         except Exception:
@@ -1447,17 +1399,12 @@ def run_bot():
         except Exception as e:
 
             logger.exception(
-
                 "Polling crashed: %s",
-
                 e
-
             )
 
             logger.info(
-
                 "Restarting in 5 seconds..."
-
             )
 
             time.sleep(5)
