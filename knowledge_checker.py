@@ -207,11 +207,11 @@ def print_summary(report):
         print("- malformed:            %d" % len(report["malformed"]))
     conflicts = [entry for entry in report["results"] if "conflict" in entry["type"]]
     if conflicts:
-        print("\\nConflicts requiring review:")
+        print("\nConflicts requiring review:")
         for entry in conflicts[:20]:
             print("[%s | score %.3f] %s" % (entry["type"], entry["score"], entry["new"]["question"]))
             print("  existing: %s" % entry["existing"]["question"])
-    print("\\nSafe to import: %s" % ("NO" if conflicts or report["malformed"] else "YES"))
+    print("\nSafe to import: %s" % ("NO" if conflicts or report["malformed"] else "YES"))
 
 
 def main():
@@ -232,7 +232,7 @@ def main():
     if args.json_out:
         with open(args.json_out, "w", encoding="utf-8") as handle:
             json.dump(report, handle, ensure_ascii=False, indent=2)
-            handle.write("\\n")
+            handle.write("\n")
     return 2 if report["malformed"] or any("conflict" in entry["type"] for entry in report["results"]) else 0
 
 
