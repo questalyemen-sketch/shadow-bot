@@ -23,9 +23,9 @@ REPLACEMENTS = {
     "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ة": "ه",
     "ى": "ي", "ؤ": "و", "ئ": "ي"
 }
-DIACRITICS = re.compile(r"[\\u0610-\\u061A\\u064B-\\u065F\\u0670]")
-NON_TEXT = re.compile(r"[^\\w\\s\\u0600-\\u06FF]", re.UNICODE)
-SPACES = re.compile(r"\\s+")
+DIACRITICS = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670]")
+NON_TEXT = re.compile(r"[^\w\s\u0600-\u06FF]", re.UNICODE)
+SPACES = re.compile(r"\s+")
 
 
 def normalize_text(value):
