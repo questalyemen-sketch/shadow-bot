@@ -1,6 +1,6 @@
 # =========================================================
-# SHADOW BRAIN 🧠
-# Smart Arabic Knowledge Search Engine
+# SHADOW BRAIN V2 🧠
+# Advanced Arabic Knowledge Search Engine
 # =========================================================
 
 import re
@@ -11,43 +11,39 @@ from database import get_all_knowledge
 
 
 # =========================================================
+# Configuration
+# =========================================================
+
+MIN_SCORE = 0.50
+EXACT_SCORE = 1.0
+
+QUESTION_WEIGHT = 0.70
+KEYWORD_WEIGHT = 0.30
+
+# عدد المرشحين الذين نطبق عليهم المقارنة الثقيلة
+MAX_DEEP_CANDIDATES = 80
+
+
+# =========================================================
 # Arabic Normalization
 # =========================================================
 
-ARABIC_DIACRITICS = re.compile(
-    r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]"
-)
-
-NON_TEXT = re.compile(
-    r"[^\w\s\u0600-\u06FF]"
-)
-
-MULTI_SPACE = re.compile(
-    r"\s+"
-)
-
-
 def normalize_text(text):
-    """
-    توحيد النص العربي والإنجليزي.
-
-    الهدف:
-    جعل الصيغ المختلفة للسؤال أقرب لبعضها.
-    """
-
-    if text is None:
-        return ""
-
-    text = str(text).lower().strip()
 
     if not text:
         return ""
+
+    text = str(text).lower().strip()
 
     # -----------------------------------------------------
     # إزالة التشكيل
     # -----------------------------------------------------
 
-    text = ARABIC_DIACRITICS.sub("", text)
+    text = re.sub(
+        r"[\u0610-\u061A\u064B-\u065F\u0670]",
+        "",
+        text
+    )
 
     # -----------------------------------------------------
     # إزالة التطويل
@@ -60,82 +56,114 @@ def normalize_text(text):
     # -----------------------------------------------------
 
     replacements = {
+
         "أ": "ا",
         "إ": "ا",
         "آ": "ا",
         "ٱ": "ا",
 
+        "ة": "ه",
+
         "ى": "ي",
 
         "ؤ": "و",
+
         "ئ": "ي",
 
-        "ة": "ه",
     }
 
     for old, new in replacements.items():
         text = text.replace(old, new)
 
     # -----------------------------------------------------
-    # توحيد بعض الصيغ العامية
+    # كلمات عامية شائعة
     # -----------------------------------------------------
 
-    slang = {
+    colloquial = {
+
         "ايش": "ماذا",
         "إيش": "ماذا",
+
+        "اش": "ماذا",
         "وش": "ماذا",
         "شو": "ماذا",
+        "شنو": "ماذا",
 
         "ليش": "لماذا",
         "ليه": "لماذا",
-        "ليشـ": "لماذا",
+        "لشو": "لماذا",
 
         "مين": "من",
+        "منو": "من",
 
         "وين": "اين",
-        "وينك": "اين",
+        "فين": "اين",
 
         "متى": "متى",
 
         "كيفك": "كيف حالك",
-        "شخبارك": "كيف حالك",
         "شلونك": "كيف حالك",
+        "شخبارك": "كيف حالك",
 
-        "انتو": "انتم",
-        "انتمو": "انتم",
+        "هاذي": "هذه",
+        "هذي": "هذه",
+        "هذا": "هذا",
 
-        "انا": "انا",
-        "إنا": "انا",
+        "ابغى": "اريد",
+        "ابي": "اريد",
+        "بغيت": "اريد",
+
+        "مو": "ليس",
+        "مش": "ليس",
+
+        "عندي": "لدي",
+        "عندك": "لديك",
+
     }
 
-    for old, new in slang.items():
-        text = text.replace(old, new)
+    for old, new in colloquial.items():
+
+        text = re.sub(
+            rf"(?<!\w){re.escape(old)}(?!\w)",
+            new,
+            text
+        )
 
     # -----------------------------------------------------
-    # تنظيف الرموز
+    # تقليل تكرار الحروف
+    #
+    # مثال:
+    # مااااااااا -> ما
+    # حلووووو -> حلو
     # -----------------------------------------------------
 
-    text = NON_TEXT.sub(" ", text)
+    text = re.sub(
+        r"(.)\1{2,}",
+        r"\1\1",
+        text
+    )
 
     # -----------------------------------------------------
-    # إزالة المسافات الزائدة
+    # إزالة الرموز
     # -----------------------------------------------------
 
-    text = MULTI_SPACE.sub(" ", text).strip()
+    text = re.sub(
+        r"[^\w\s\u0600-\u06FF]",
+        " ",
+        text
+    )
+
+    # -----------------------------------------------------
+    # تنظيف المسافات
+    # -----------------------------------------------------
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    ).strip()
 
     return text
-
-
-# =========================================================
-# Backward Compatibility
-# =========================================================
-
-def normalize(text):
-    """
-    توافق مع الإصدارات القديمة.
-    """
-
-    return normalize_text(text)
 
 
 # =========================================================
@@ -143,21 +171,23 @@ def normalize(text):
 # =========================================================
 
 STOP_WORDS = {
+
     "هل",
     "هو",
     "هي",
-    "هم",
-    "هن",
+
     "انا",
+    "أنت",
     "انت",
     "انتي",
-    "انتم",
     "نحن",
+
     "يا",
 
     "من",
     "ما",
     "ماذا",
+
     "كيف",
     "اين",
     "متى",
@@ -167,19 +197,33 @@ STOP_WORDS = {
     "من",
     "على",
     "عن",
-    "الي",
+
     "الى",
+    "إلى",
+
     "لي",
     "لك",
     "له",
     "لها",
-    "مع",
+
     "هذا",
     "هذه",
+
     "ذلك",
     "تلك",
-    "هو",
-    "هي",
+
+    "هل",
+    "قد",
+    "لقد",
+
+    "ان",
+    "أن",
+
+    "او",
+    "أو",
+
+    "ثم",
+
 }
 
 
@@ -188,136 +232,34 @@ STOP_WORDS = {
 # =========================================================
 
 def words(text):
-    """
-    استخراج الكلمات المهمة من النص.
-    """
 
     text = normalize_text(text)
 
     if not text:
         return set()
 
-    result = set()
-
-    for word in text.split():
-
-        if len(word) <= 1:
-            continue
-
-        if word in STOP_WORDS:
-            continue
-
-        result.add(word)
-
-    return result
+    return {
+        word
+        for word in text.split()
+        if len(word) > 1
+        and word not in STOP_WORDS
+    }
 
 
 # =========================================================
-# Light Arabic Stemming
+# Character Similarity
 # =========================================================
 
-PREFIXES = (
-    "وال",
-    "بال",
-    "كال",
-    "لل",
-    "ال",
-    "و",
-    "ف",
-    "ب",
-    "ك",
-    "ل",
-)
-
-
-SUFFIXES = (
-    "يات",
-    "ية",
-    "ات",
-    "ون",
-    "ين",
-    "ان",
-    "ها",
-    "هم",
-    "هن",
-    "كما",
-    "كم",
-    "نا",
-    "ني",
-    "ه",
-    "ك",
-    "ي",
-    "ة",
-)
-
-
-def light_stem(word):
-    """
-    اشتقاق عربي خفيف.
-    لا يحاول تحليل الكلمة صرفيًا بالكامل.
-    """
-
-    word = normalize_text(word)
-
-    if len(word) <= 3:
-        return word
-
-    # إزالة بادئة واحدة
-    for prefix in PREFIXES:
-
-        if word.startswith(prefix):
-
-            remaining = word[len(prefix):]
-
-            if len(remaining) >= 3:
-                word = remaining
-                break
-
-    # إزالة لاحقة واحدة
-    for suffix in SUFFIXES:
-
-        if word.endswith(suffix):
-
-            remaining = word[:-len(suffix)]
-
-            if len(remaining) >= 3:
-                word = remaining
-                break
-
-    return word
-
-
-def stem_words(text):
-    """
-    استخراج الكلمات بعد الاشتقاق الخفيف.
-    """
-
-    result = set()
-
-    for word in words(text):
-
-        stem = light_stem(word)
-
-        if stem:
-            result.add(stem)
-
-    return result
-
-
-# =========================================================
-# Sequence Similarity
-# =========================================================
-
-def sequence_similarity(a, b):
-
-    a = normalize_text(a)
-    b = normalize_text(b)
+def character_similarity(a, b):
 
     if not a or not b:
         return 0.0
 
     if a == b:
         return 1.0
+
+    if a in b or b in a:
+        return 0.92
 
     return SequenceMatcher(
         None,
@@ -338,50 +280,34 @@ def word_similarity(a, b):
     if not wa or not wb:
         return 0.0
 
-    intersection = wa & wb
+    intersection = len(wa & wb)
 
-    if not intersection:
+    if intersection == 0:
         return 0.0
 
-    union = wa | wb
+    union = len(wa | wb)
 
-    return len(intersection) / len(union)
+    if union == 0:
+        return 0.0
+
+    jaccard = intersection / union
+
+    # نسبة الكلمات المشتركة بالنسبة لسؤال المستخدم
+    user_coverage = intersection / len(wa)
+
+    # نعطي أهمية أعلى لتغطية سؤال المستخدم
+    return (
+        jaccard * 0.45
+        +
+        user_coverage * 0.55
+    )
 
 
 # =========================================================
-# Stem Similarity
-# =========================================================
-
-def stem_similarity(a, b):
-
-    wa = stem_words(a)
-    wb = stem_words(b)
-
-    if not wa or not wb:
-        return 0.0
-
-    intersection = wa & wb
-
-    if not intersection:
-        return 0.0
-
-    union = wa | wb
-
-    return len(intersection) / len(union)
-
-
-# =========================================================
-# Main Similarity Engine
+# Main Similarity
 # =========================================================
 
 def similarity(a, b):
-    """
-    حساب درجة التشابه بين سؤالين.
-
-    النتيجة:
-        0.0 = لا يوجد تشابه
-        1.0 = تطابق كامل
-    """
 
     a = normalize_text(a)
     b = normalize_text(b)
@@ -389,36 +315,62 @@ def similarity(a, b):
     if not a or not b:
         return 0.0
 
+    # -----------------------------------------------------
     # تطابق كامل
+    # -----------------------------------------------------
+
     if a == b:
-        return 1.0
+        return EXACT_SCORE
 
-    # احتواء كامل
+    # -----------------------------------------------------
+    # احتواء
+    # -----------------------------------------------------
+
     if a in b or b in a:
-        return 0.94
+        return 0.92
 
-    seq = sequence_similarity(a, b)
+    # -----------------------------------------------------
+    # تشابه الكلمات
+    # -----------------------------------------------------
 
-    word = word_similarity(a, b)
-
-    stem = stem_similarity(a, b)
-
-    score = (
-        seq * 0.40
-        +
-        word * 0.35
-        +
-        stem * 0.25
+    word_score = word_similarity(
+        a,
+        b
     )
 
-    return min(score, 1.0)
+    # -----------------------------------------------------
+    # تشابه الحروف
+    # -----------------------------------------------------
+
+    char_score = character_similarity(
+        a,
+        b
+    )
+
+    # -----------------------------------------------------
+    # النتيجة النهائية
+    # -----------------------------------------------------
+
+    score = (
+        char_score * 0.55
+        +
+        word_score * 0.45
+    )
+
+    return round(
+        score,
+        4
+    )
 
 
 # =========================================================
-# Keyword Matching
+# Keyword Similarity
 # =========================================================
 
-def keyword_similarity(user_text, keywords):
+def keyword_similarity(
+    user_text,
+    keywords
+):
 
     if not keywords:
         return 0.0
@@ -434,163 +386,100 @@ def keyword_similarity(user_text, keywords):
     if not user_words:
         return 0.0
 
-    # دعم:
-    # ,
-    # ،
-    # ;
-    # /
-    # |
-    keyword_list = re.split(
-        r"[,،;/|]+",
-        str(keywords)
-    )
+    keyword_list = []
 
-    normalized_keywords = []
-
-    for keyword in keyword_list:
+    for keyword in keywords.split(","):
 
         keyword = normalize_text(
             keyword
         )
 
         if keyword:
-            normalized_keywords.append(
+            keyword_list.append(
                 keyword
             )
 
-    if not normalized_keywords:
+    if not keyword_list:
         return 0.0
 
     matches = 0
 
-    for keyword in normalized_keywords:
+    for keyword in keyword_list:
 
-        keyword_words = words(
-            keyword
-        )
-
-        # الكلمة المفتاحية نفسها
-        if keyword in user_words:
+        if (
+            keyword in user_words
+            or keyword in user_normalized
+        ):
             matches += 1
-            continue
 
-        # إذا كانت عبارة
-        if keyword in user_normalized:
-            matches += 1
-            continue
-
-        # مقارنة كلمات المفتاح
-        if keyword_words:
-
-            if keyword_words & user_words:
-                matches += 0.5
-
-    score = matches / len(
-        normalized_keywords
-    )
-
-    return min(score, 1.0)
+    return matches / len(keyword_list)
 
 
 # =========================================================
-# Candidate Score
+# Fast Candidate Score
 # =========================================================
 
-def score_candidate(user_text, item):
+def fast_score(
+    user_text,
+    question
+):
 
-    question = item["question"]
-
-    keywords = item["keywords"] or ""
-
-    normalized_user = normalize_text(
+    user_normalized = normalize_text(
         user_text
     )
 
-    normalized_question = normalize_text(
+    question_normalized = normalize_text(
         question
     )
 
-    # -----------------------------------------------------
-    # Exact Match
-    # -----------------------------------------------------
+    if not user_normalized or not question_normalized:
+        return 0.0
 
-    if normalized_user == normalized_question:
+    # تطابق مباشر
+    if user_normalized == question_normalized:
         return 1.0
 
-    # -----------------------------------------------------
-    # Phrase Match
-    # -----------------------------------------------------
-
+    # احتواء
     if (
-        normalized_user in normalized_question
-        or
-        normalized_question in normalized_user
+        user_normalized in question_normalized
+        or question_normalized in user_normalized
     ):
-        return 0.96
-
-    # -----------------------------------------------------
-    # Question similarity
-    # -----------------------------------------------------
-
-    question_score = similarity(
-        normalized_user,
-        normalized_question
-    )
-
-    # -----------------------------------------------------
-    # Keyword similarity
-    # -----------------------------------------------------
-
-    keyword_score = keyword_similarity(
-        normalized_user,
-        keywords
-    )
-
-    # -----------------------------------------------------
-    # Final score
-    # -----------------------------------------------------
-
-    final_score = (
-        question_score * 0.78
-        +
-        keyword_score * 0.22
-    )
-
-    # -----------------------------------------------------
-    # Bonus للكلمات المشتركة
-    # -----------------------------------------------------
+        return 0.92
 
     user_words = words(
-        normalized_user
+        user_normalized
     )
 
     question_words = words(
-        normalized_question
+        question_normalized
     )
 
-    if user_words and question_words:
+    if not user_words or not question_words:
+        return 0.0
 
-        common = user_words & question_words
+    intersection = len(
+        user_words & question_words
+    )
 
-        if common:
+    if intersection == 0:
+        return 0.0
 
-            coverage = (
-                len(common)
-                /
-                len(user_words)
-            )
+    coverage = (
+        intersection
+        /
+        len(user_words)
+    )
 
-            if coverage >= 0.80:
+    question_coverage = (
+        intersection
+        /
+        len(question_words)
+    )
 
-                final_score += 0.08
-
-            elif coverage >= 0.60:
-
-                final_score += 0.04
-
-    return min(
-        final_score,
-        0.99
+    return (
+        coverage * 0.65
+        +
+        question_coverage * 0.35
     )
 
 
@@ -599,21 +488,6 @@ def score_candidate(user_text, item):
 # =========================================================
 
 def search_answer(user_text):
-    """
-    البحث عن أفضل إجابة.
-
-    هذه هي الدالة التي يستخدمها main.py.
-    """
-
-    if not user_text:
-        return None
-
-    user_text = str(
-        user_text
-    ).strip()
-
-    if not user_text:
-        return None
 
     normalized_user = normalize_text(
         user_text
@@ -622,125 +496,130 @@ def search_answer(user_text):
     if not normalized_user:
         return None
 
-    # =====================================================
-    # تحميل المعرفة
-    # =====================================================
-
-    try:
-
-        knowledge = get_all_knowledge()
-
-    except Exception:
-
-        return None
+    knowledge = get_all_knowledge()
 
     if not knowledge:
         return None
 
     # =====================================================
-    # المرحلة 1
-    # Exact normalized match
+    # المرحلة الأولى:
+    # البحث عن تطابق كامل
     # =====================================================
 
     for item in knowledge:
 
         question = item["question"]
 
-        if normalize_text(
+        normalized_question = normalize_text(
             question
-        ) == normalized_user:
+        )
+
+        if normalized_user == normalized_question:
 
             return item["answer"]
 
     # =====================================================
-    # المرحلة 2
-    # Compact match
+    # المرحلة الثانية:
+    # إنشاء مرشحين سريعًا
     # =====================================================
 
-    compact_user = normalized_user.replace(
-        " ",
-        ""
-    )
-
-    if compact_user:
-
-        for item in knowledge:
-
-            compact_question = normalize_text(
-                item["question"]
-            ).replace(
-                " ",
-                ""
-            )
-
-            if compact_question == compact_user:
-
-                return item["answer"]
-
-    # =====================================================
-    # المرحلة 3
-    # Scoring
-    # =====================================================
-
-    best_item = None
-
-    best_score = 0.0
+    candidates = []
 
     for item in knowledge:
 
-        try:
+        question = item["question"]
 
-            score = score_candidate(
-                user_text,
-                item
+        score = fast_score(
+            normalized_user,
+            question
+        )
+
+        if score > 0:
+
+            candidates.append(
+                (score, item)
             )
 
-        except Exception:
-
-            continue
-
-        if score > best_score:
-
-            best_score = score
-
-            best_item = item
-
     # =====================================================
-    # لا توجد نتيجة
+    # إذا لم توجد مرشحات
     # =====================================================
 
-    if best_item is None:
+    if not candidates:
         return None
 
     # =====================================================
-    # Confidence Threshold
+    # ترتيب المرشحين
     # =====================================================
 
-    user_word_count = len(
-        words(user_text)
+    candidates.sort(
+        key=lambda x: x[0],
+        reverse=True
     )
 
-    # سؤال قصير جدًا
-    if user_word_count <= 1:
+    # نأخذ عددًا محدودًا للمقارنة العميقة
+    candidates = candidates[
+        :MAX_DEEP_CANDIDATES
+    ]
 
-        threshold = 0.78
+    # =====================================================
+    # المرحلة الثالثة:
+    # المقارنة الدقيقة
+    # =====================================================
 
-    # سؤال قصير
-    elif user_word_count <= 2:
+    deep_candidates = []
 
-        threshold = 0.68
+    for _, item in candidates:
 
-    # سؤال متوسط
-    elif user_word_count <= 4:
+        question = item["question"]
 
-        threshold = 0.55
+        keywords = item["keywords"] or ""
 
-    # سؤال طويل
-    else:
+        question_score = similarity(
+            normalized_user,
+            question
+        )
 
-        threshold = 0.48
+        keyword_score = keyword_similarity(
+            normalized_user,
+            keywords
+        )
 
-    if best_score < threshold:
+        final_score = (
+            question_score
+            * QUESTION_WEIGHT
+            +
+            keyword_score
+            * KEYWORD_WEIGHT
+        )
+
+        deep_candidates.append(
+            (
+                final_score,
+                item
+            )
+        )
+
+    # =====================================================
+    # ترتيب النتائج النهائية
+    # =====================================================
+
+    deep_candidates.sort(
+        key=lambda x: x[0],
+        reverse=True
+    )
+
+    if not deep_candidates:
+        return None
+
+    best_score, best_item = (
+        deep_candidates[0]
+    )
+
+    # =====================================================
+    # حماية من الإجابات الخاطئة
+    # =====================================================
+
+    if best_score < MIN_SCORE:
 
         return None
 
@@ -755,44 +634,68 @@ def search_candidates(
     user_text,
     limit=5
 ):
-    """
-    إرجاع أفضل النتائج مع درجاتها.
-
-    مفيدة للاختبار والتطوير مستقبلًا.
-    """
 
     if not user_text:
         return []
 
-    try:
+    knowledge = get_all_knowledge()
 
-        knowledge = get_all_knowledge()
-
-    except Exception:
-
+    if not knowledge:
         return []
 
-    results = []
+    candidates = []
+
+    normalized_user = normalize_text(
+        user_text
+    )
+
+    # -----------------------------------------------------
+    # البحث السريع
+    # -----------------------------------------------------
 
     for item in knowledge:
 
-        try:
+        question = item["question"]
 
-            score = score_candidate(
-                user_text,
+        score = fast_score(
+            normalized_user,
+            question
+        )
+
+        if score > 0:
+
+            candidates.append(
+                (score, item)
+            )
+
+    # -----------------------------------------------------
+    # ترتيب
+    # -----------------------------------------------------
+
+    candidates.sort(
+        key=lambda x: x[0],
+        reverse=True
+    )
+
+    # -----------------------------------------------------
+    # تحسين أفضل النتائج
+    # -----------------------------------------------------
+
+    results = []
+
+    for _, item in candidates[:limit * 3]:
+
+        score = similarity(
+            normalized_user,
+            item["question"]
+        )
+
+        results.append(
+            (
+                score,
                 item
             )
-
-            results.append(
-                (
-                    score,
-                    item
-                )
-            )
-
-        except Exception:
-
-            continue
+        )
 
     results.sort(
         key=lambda x: x[0],
@@ -800,6 +703,45 @@ def search_candidates(
     )
 
     return results[:limit]
+
+
+# =========================================================
+# Find Best Match
+# =========================================================
+
+def find_best_match(user_text):
+
+    results = search_candidates(
+        user_text,
+        limit=1
+    )
+
+    if not results:
+        return None
+
+    score, item = results[0]
+
+    if score < MIN_SCORE:
+        return None
+
+    return item
+
+
+# =========================================================
+# Get Best Score
+# =========================================================
+
+def get_best_score(user_text):
+
+    results = search_candidates(
+        user_text,
+        limit=1
+    )
+
+    if not results:
+        return 0.0
+
+    return results[0][0]
 
 
 # =========================================================
@@ -817,41 +759,28 @@ def random_answer(answers):
 
 
 # =========================================================
-# Brain Diagnostics
+# Brain Test
 # =========================================================
 
-def brain_test(question):
+def test_brain(question):
 
-    """
-    أداة اختبار بسيطة.
-
-    مثال:
-
-        brain_test("من انت")
-
-    ترجع:
-        {
-            "answer": "...",
-            "score": ...
-        }
-    """
-
-    candidates = search_candidates(
-        question,
-        limit=1
+    answer = search_answer(
+        question
     )
 
-    if not candidates:
+    if answer:
         return {
-            "answer": None,
-            "score": 0.0,
-            "question": None
+            "found": True,
+            "answer": answer,
+            "score": get_best_score(
+                question
+            )
         }
 
-    score, item = candidates[0]
-
     return {
-        "answer": item["answer"],
-        "score": round(score, 4),
-        "question": item["question"]
+        "found": False,
+        "answer": None,
+        "score": get_best_score(
+            question
+        )
     }
